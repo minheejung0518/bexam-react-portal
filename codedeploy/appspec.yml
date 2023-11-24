@@ -1,0 +1,23 @@
+version: 0.0
+os: linux
+files:
+  - source: /bexam-react-portal.war
+    destination: /service/bexam/bexam-react-portal/app
+    
+permissions:
+  - object: /service/bexam/bexam-react-portal/app
+    pattern: "bexam-react-portal.war"
+    owner: ec2-user
+    mode: 644
+    type:
+      - file
+
+hooks:
+  BeforeInstall:
+    - location: /stop_server.sh
+      timeout: 300
+      runas: ec2-user
+  ApplicationStart:
+    - location : /start_server.sh
+      timeout: 300
+      runas: ec2-user

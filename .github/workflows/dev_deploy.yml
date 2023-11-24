@@ -1,0 +1,64 @@
+name: 1. [DEV] bexam-react-portal 배포
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types: [ closed ]
+
+jobs:
+  build:
+    runs-on: [ ubuntu-latest ]
+    permissions:
+      id-token: write # This is required for requesting the JWT
+      contents: read  # This is required for actions/checkout
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.16.0
+
+      - name: Cache node modules
+        uses: actions/cache@v3
+        id: cache
+        with:
+          path: node_modules
+          key: npm-packages-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install Dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          npm cache clean --force
+          rm -rf ./node_modules
+          npm install --save --legacy-peer-deps
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          role-to-assume: arn:aws:iam::308943070041:role/tf-github-actions-role
+          aws-region: ap-northeast-2
+
+      - name: Build with Npm
+        run: |
+          mkdir deploy
+          cp codedeploy/appspec.yml deploy/appspec.yml
+          cp codedeploy/stop_server.sh deploy/stop_server.sh
+          cp codedeploy/start_server.sh deploy/start_server.sh
+          CI=false
+          npm run package
+          cp build/bexam-react-portal.war deploy/bexam-react-portal.war
+          tar -zcvf bexam-react-portal.war.gz -C deploy .
+        shell: bash
+
+      - name: S3 upload
+        run: |
+          aws s3 cp bexam-react-portal.war.gz s3://tf-bexam-bucket/artifacts/bexam/bexam-react-portal.war.gz
+
+      - name: Run Code Deploy
+        run: |
+          aws deploy create-deployment --application-name tf-bexam-deploy-app \
+            --deployment-config-name CodeDeployDefault.AllAtOnce \
+            --deployment-group-name tf-bexam-frontend-deploy-group \
+            --s3-location bucket=tf-bexam-bucket,bundleType=tgz,key=artifacts/bexam/bexam-react-portal.war.gz
